@@ -74,7 +74,8 @@ public class Receiver extends BroadcastReceiver {
 
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
             createNotificationChannels(context);
-            updateDeveloperOptionsWatcher(context);
+            /*updateDeveloperOptionsWatcher(context,
+                prefs.getBoolean(context.getString(R.string.pref_key_quick_setting), false));*/
 
             // We know that Perfetto won't be tracing already at boot, so pass the
             // tracingIsOff argument to avoid the Perfetto check.
@@ -171,51 +172,51 @@ public class Receiver extends BroadcastReceiver {
         }
 
         QsService.updateTile();
+
+        updateDeveloperOptionsWatcher(context, quickSettingsEnabled);
     }
 
     /*
-     * When Developer Options are toggled, also toggle the Storage Provider that
-     * shows "System traces" in Files.
      * When Developer Options are turned off, reset the Show Quick Settings Tile
      * preference to false to hide the tile. The user will need to re-enable the
      * preference if they decide to turn Developer Options back on again.
      */
-    private static void updateDeveloperOptionsWatcher(Context context) {
+    private static void updateDeveloperOptionsWatcher(Context context,
+            boolean quickSettingsEnabled) {
+
         Uri settingUri = Settings.Global.getUriFor(
             Settings.Global.DEVELOPMENT_SETTINGS_ENABLED);
 
-        ContentObserver developerOptionsObserver =
-            new ContentObserver(new Handler()) {
-                @Override
-                public void onChange(boolean selfChange) {
-                    super.onChange(selfChange);
+        if (quickSettingsEnabled) {
+            mDeveloperOptionsObserver =
+                new ContentObserver(new Handler()) {
+                    @Override
+                    public void onChange(boolean selfChange) {
+                        super.onChange(selfChange);
 
-                    boolean developerOptionsEnabled = (1 ==
-                        Settings.Global.getInt(context.getContentResolver(),
-                            Settings.Global.DEVELOPMENT_SETTINGS_ENABLED , 0));
+                        boolean developerOptionsEnabled = (1 ==
+                            Settings.Global.getInt(context.getContentResolver(),
+                                Settings.Global.DEVELOPMENT_SETTINGS_ENABLED , 0));
 
-                    ComponentName name = new ComponentName(context,
-                        StorageProvider.class);
-                    context.getPackageManager().setComponentEnabledSetting(name,
-                       developerOptionsEnabled
-                            ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                            : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP);
-
-                    if (!developerOptionsEnabled) {
-                        SharedPreferences prefs =
-                            PreferenceManager.getDefaultSharedPreferences(context);
-                        prefs.edit().putBoolean(
-                            context.getString(R.string.pref_key_quick_setting), false)
-                            .commit();
-                        updateQuickSettings(context);
+                        if (!developerOptionsEnabled) {
+                            SharedPreferences prefs =
+                                PreferenceManager.getDefaultSharedPreferences(context);
+                            prefs.edit().putBoolean(
+                                context.getString(R.string.pref_key_quick_setting), false)
+                                .apply();
+                            updateQuickSettings(context);
+                        }
                     }
-                }
-            };
+                };
 
-        context.getContentResolver().registerContentObserver(settingUri,
-            false, developerOptionsObserver);
-        developerOptionsObserver.onChange(true);
+            context.getContentResolver().registerContentObserver(settingUri,
+                false, mDeveloperOptionsObserver);
+
+        } else if (mDeveloperOptionsObserver != null) {
+            context.getContentResolver().unregisterContentObserver(
+                mDeveloperOptionsObserver);
+            mDeveloperOptionsObserver = null;
+        }
     }
 
     private static void postCategoryNotification(Context context, SharedPreferences prefs) {
